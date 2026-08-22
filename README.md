@@ -11,7 +11,7 @@ Open `Assets/Scenes/SampleScene.unity` and press Play. Runtime bootstrap creates
 - Ore Collectors generate ore. Defense upgrades cost ore; collector upgrades cost gold.
 - Press **Start Wave** to begin progression. Wins automatically continue to the next wave until the core falls.
 - After a progression loss, the last cleared wave repeats as a farming wave. Start Wave queues another progression run after the current farm wave.
-- The core sits at the center of a large 28-path skill tree: four primary branches radiate outward, each splits into two outer branches, and every outer branch splits into two final endpoints. Every 10 cleared waves grants a path unlock, and the player chooses an available connected branch and its permanent bonus.
+- The core sits at the center of a large 60-path skill tree: four primary branches radiate outward, each splits into two outer branches, every outer branch splits into two end branches, and each end branch splits into two final leaves. Every 10 cleared waves grants a path unlock, and the player chooses an available connected branch and its permanent bonus.
 - Selectable path segments turn yellow. Hover over any path at any time to see its bonus and unlock requirements, then click a yellow path to unlock it.
 - Hold left-click and drag to move the camera. Use the mouse wheel to zoom around the cursor.
 - Each scroll-wheel step changes zoom noticeably, with a range from close-up building views to a full-map overview.

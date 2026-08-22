@@ -49,18 +49,23 @@ namespace ShapeGuard
         public int PathUnlocksAvailable => Mathf.Clamp(
             ClearedWave / 10 - (UnlockedPaths - 1), 0, pathUnlocked.Length - UnlockedPaths);
         public int MaxCoreHealth => GameBalance.CoreHealth + (IsPathUnlocked(6) ? 5 : 0) +
-            (IsPathUnlocked(18) ? 5 : 0) + (IsPathUnlocked(19) ? 5 : 0) + (IsPathUnlocked(26) ? 10 : 0);
+            (IsPathUnlocked(18) ? 5 : 0) + (IsPathUnlocked(19) ? 5 : 0) + (IsPathUnlocked(26) ? 10 : 0) +
+            OuterBonusCount(5) * 2;
         public float DefenseDamageMultiplier => 1f + (IsPathUnlocked(1) ? .2f : 0) +
-            (IsPathUnlocked(12) ? .15f : 0) + (IsPathUnlocked(22) ? .2f : 0);
+            (IsPathUnlocked(12) ? .15f : 0) + (IsPathUnlocked(22) ? .2f : 0) + OuterBonusCount(0) * .05f;
         public float OreAmountMultiplier => 1f + (IsPathUnlocked(2) ? .25f : 0) +
-            (IsPathUnlocked(16) ? .2f : 0) + (IsPathUnlocked(24) ? .25f : 0);
-        public float DefenseRangeMultiplier => 1f + (IsPathUnlocked(3) ? .2f : 0) + (IsPathUnlocked(13) ? .15f : 0);
+            (IsPathUnlocked(16) ? .2f : 0) + (IsPathUnlocked(24) ? .25f : 0) + OuterBonusCount(4) * .1f;
+        public float DefenseRangeMultiplier => 1f + (IsPathUnlocked(3) ? .2f : 0) +
+            (IsPathUnlocked(13) ? .15f : 0) + OuterBonusCount(1) * .05f;
         public float DefenseFireIntervalMultiplier => (IsPathUnlocked(4) ? .85f : 1f) *
-            (IsPathUnlocked(14) ? .85f : 1f) * (IsPathUnlocked(23) ? .85f : 1f);
+            (IsPathUnlocked(14) ? .85f : 1f) * (IsPathUnlocked(23) ? .85f : 1f) *
+            Mathf.Pow(.95f, OuterBonusCount(2));
         public float GoldRewardMultiplier => 1f + (IsPathUnlocked(5) ? .25f : 0) +
-            (IsPathUnlocked(15) ? .2f : 0) + (IsPathUnlocked(25) ? .25f : 0);
-        public float DefenseCostMultiplier => (IsPathUnlocked(7) ? .8f : 1f) * (IsPathUnlocked(20) ? .85f : 1f);
-        public float OreIntervalMultiplier => (IsPathUnlocked(8) ? .8f : 1f) * (IsPathUnlocked(17) ? .85f : 1f);
+            (IsPathUnlocked(15) ? .2f : 0) + (IsPathUnlocked(25) ? .25f : 0) + OuterBonusCount(3) * .1f;
+        public float DefenseCostMultiplier => (IsPathUnlocked(7) ? .8f : 1f) *
+            (IsPathUnlocked(20) ? .85f : 1f) * Mathf.Pow(.97f, OuterBonusCount(6));
+        public float OreIntervalMultiplier => (IsPathUnlocked(8) ? .8f : 1f) *
+            (IsPathUnlocked(17) ? .85f : 1f) * Mathf.Pow(.95f, OuterBonusCount(7));
         public float CollectorCostMultiplier => (IsPathUnlocked(10) ? .8f : 1f) * (IsPathUnlocked(21) ? .85f : 1f);
         public bool HasStarted { get; private set; }
         public bool ProgressionActive { get; private set; }
@@ -534,6 +539,14 @@ namespace ShapeGuard
         }
 
         public bool IsPathUnlocked(int index) => index >= 0 && index < pathUnlocked.Length && pathUnlocked[index];
+
+        private int OuterBonusCount(int bonusIndex)
+        {
+            var count = 0;
+            for (var index = 28 + bonusIndex; index < pathUnlocked.Length; index += 8)
+                if (pathUnlocked[index]) count++;
+            return count;
+        }
 
         public bool CanUnlockPath(int index)
         {

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace ShapeGuard
@@ -14,13 +15,13 @@ namespace ShapeGuard
         public const float DefaultGameSpeed = 1f;
         public const float CameraZoomStep = 1.5f;
         public const float CameraMinimumZoom = 3f;
-        public const float CameraMaximumZoom = 88f;
+        public const float CameraMaximumZoom = 138f;
 
         public static int Cost(BuildingType type) => type == BuildingType.TriangleDefense ? DefenseCost : CollectorCost;
         public static string Currency(BuildingType type) => type == BuildingType.TriangleDefense ? "ore" : "gold";
         public static string Name(BuildingType type) => type == BuildingType.TriangleDefense ? "Triangle Defense" : "Ore Collector";
 
-        public static readonly string[] PathNames =
+        private static readonly string[] BasePathNames =
         {
             "Foundation", "Sharpened Edges", "Rich Veins", "Long Reach", "Quick Triggers",
             "Bounty Hunt", "Reinforced Core", "Efficient Armory", "Deep Mining", "Impact Shield",
@@ -30,7 +31,7 @@ namespace ShapeGuard
             "Golden Current", "Citadel Core", "Phoenix Core"
         };
 
-        public static readonly string[] PathBonuses =
+        private static readonly string[] BasePathBonuses =
         {
             "Starting enemy route", "+20% defense damage", "+25% ore per collection", "+20% defense range",
             "+15% defense attack speed", "+25% gold from enemies", "+5 maximum core health",
@@ -42,6 +43,38 @@ namespace ShapeGuard
             "+20% defense damage", "+15% defense attack speed", "+25% ore per collection",
             "+25% gold from enemies", "+10 maximum core health", "+1 Second Wind charge"
         };
+
+        private static readonly string[] EdgeSkillNames =
+        {
+            "Edge Power", "Edge Vision", "Edge Speed", "Edge Bounty",
+            "Edge Mining", "Edge Armor", "Edge Efficiency", "Edge Automation"
+        };
+
+        private static readonly string[] EdgeSkillBonuses =
+        {
+            "+5% defense damage", "+5% defense range", "+5% defense attack speed",
+            "+10% gold from enemies", "+10% ore per collection", "+2 maximum core health",
+            "3% cheaper defense costs", "5% faster ore collectors"
+        };
+
+        public static readonly string[] PathNames = CreatePathNames();
+        public static readonly string[] PathBonuses = CreatePathBonuses();
+
+        private static string[] CreatePathNames()
+        {
+            var names = new List<string>(BasePathNames);
+            for (var index = 0; index < 32; index++)
+                names.Add($"Outer Leaf {index + 1} - {EdgeSkillNames[index % EdgeSkillNames.Length]}");
+            return names.ToArray();
+        }
+
+        private static string[] CreatePathBonuses()
+        {
+            var bonuses = new List<string>(BasePathBonuses);
+            for (var index = 0; index < 32; index++)
+                bonuses.Add(EdgeSkillBonuses[index % EdgeSkillBonuses.Length]);
+            return bonuses.ToArray();
+        }
 
         public static readonly Color Ground = new(.075f, .105f, .095f);
         public static readonly Color PathLocked = new(.16f, .19f, .18f);
