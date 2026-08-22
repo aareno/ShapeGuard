@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.IO;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -6,6 +8,29 @@ namespace ShapeGuard
 {
     public sealed class GameController : MonoBehaviour
     {
+        private const int SaveVersion = 1;
+        private const float AutosaveInterval = 5f;
+
+        [Serializable]
+        private sealed class SaveData
+        {
+            public int version = SaveVersion;
+            public int gold;
+            public int ore;
+            public int clearedWave;
+            public float gameSpeed;
+            public List<BuildingSaveData> buildings = new();
+        }
+
+        [Serializable]
+        private sealed class BuildingSaveData
+        {
+            public BuildingType type;
+            public int level;
+            public float x;
+            public float y;
+        }
+
         public int Gold { get; private set; } = GameBalance.StartingGold;
         public int Ore { get; private set; } = GameBalance.StartingOre;
         public int ClearedWave { get; private set; }
@@ -36,6 +61,10 @@ namespace ShapeGuard
         private float announcementTimer;
         private bool cameraDragging;
         private Vector2 lastDragPosition;
+        private bool saveDirty;
+        private float autosaveTimer;
+
+        private static string SavePath => Path.Combine(Application.persistentDataPath, "shape-guard-save.json");
 
         private void Awake()
         {
@@ -44,8 +73,25 @@ namespace ShapeGuard
             Time.timeScale = GameSpeed;
             SetupCamera();
             CreateMap();
+            var loaded = LoadProgress();
             gameObject.AddComponent<GameHud>();
-            Announce("Build, then start Wave 1", 5f);
+            if (loaded) StartWave(false);
+            else Announce("Build, then start Wave 1", 5f);
+        }
+
+        private void OnApplicationPause(bool paused)
+        {
+            if (paused) SaveProgress();
+        }
+
+        private void OnApplicationFocus(bool hasFocus)
+        {
+            if (!hasFocus) SaveProgress();
+        }
+
+        private void OnApplicationQuit()
+        {
+            SaveProgress();
         }
 
         private void OnDestroy()
@@ -57,6 +103,8 @@ namespace ShapeGuard
         {
             GameSpeed = GameSpeed < 1.5f ? 2f : GameSpeed < 2.5f ? 3f : 1f;
             Time.timeScale = GameSpeed;
+            saveDirty = true;
+            SaveProgress();
         }
 
         private void SetupCamera()
@@ -124,6 +172,8 @@ namespace ShapeGuard
         private void Update()
         {
             announcementTimer -= Time.deltaTime;
+            autosaveTimer += Time.unscaledDeltaTime;
+            if (saveDirty && autosaveTimer >= AutosaveInterval) SaveProgress();
             HandleCamera();
             HandleWave();
             HandlePointer();
@@ -238,6 +288,8 @@ namespace ShapeGuard
                 else Announce($"WAVE {ActiveWave} CLEARED - WAVE {ActiveWave + 1} NEXT", 2.3f);
             }
             else Announce($"FARM WAVE {ActiveWave} COMPLETE", 1.8f);
+            saveDirty = true;
+            SaveProgress();
             IsTransitioning = true;
             transitionTimer = 2f;
         }
@@ -358,6 +410,8 @@ namespace ShapeGuard
             buildings.Add(building);
             SelectedBuilding = building;
             CancelPlacement();
+            saveDirty = true;
+            SaveProgress();
         }
 
         private bool CanPlace(Vector3 point)
@@ -397,7 +451,13 @@ namespace ShapeGuard
         public void UpgradeSelected()
         {
             if (SelectedBuilding == null) return;
-            Announce(SelectedBuilding.Upgrade() ? "UPGRADED" : $"NEED MORE {SelectedBuilding.UpgradeCurrency.ToUpperInvariant()}", 1.4f);
+            if (SelectedBuilding.Upgrade())
+            {
+                Announce("UPGRADED", 1.4f);
+                saveDirty = true;
+                SaveProgress();
+            }
+            else Announce($"NEED MORE {SelectedBuilding.UpgradeCurrency.ToUpperInvariant()}", 1.4f);
         }
 
         public Enemy FindClosestEnemy(Vector3 position, float range)
@@ -419,6 +479,7 @@ namespace ShapeGuard
         {
             enemies.Remove(enemy);
             Gold += reward;
+            saveDirty = true;
         }
 
         public void EnemyReachedCore(Enemy enemy, int damage)
@@ -428,8 +489,87 @@ namespace ShapeGuard
             if (CoreHealth <= 0) FailWave();
         }
 
-        public void AddOre(int amount) => Ore += amount;
+        public void AddOre(int amount)
+        {
+            Ore += amount;
+            saveDirty = true;
+        }
         private void Announce(string text, float duration) { Announcement = text; announcementTimer = duration; }
+
+        private bool LoadProgress()
+        {
+            if (!File.Exists(SavePath)) return false;
+            try
+            {
+                var data = JsonUtility.FromJson<SaveData>(File.ReadAllText(SavePath));
+                if (data == null || data.version != SaveVersion) return false;
+
+                Gold = Mathf.Max(0, data.gold);
+                Ore = Mathf.Max(0, data.ore);
+                ClearedWave = Mathf.Max(0, data.clearedWave);
+                GameSpeed = data.gameSpeed >= 2.5f ? 3f : data.gameSpeed >= 1.5f ? 2f : 1f;
+                Time.timeScale = GameSpeed;
+                RefreshPathColors();
+
+                if (data.buildings != null)
+                {
+                    foreach (var savedBuilding in data.buildings)
+                    {
+                        if (!Enum.IsDefined(typeof(BuildingType), savedBuilding.type)) continue;
+                        var position = new Vector3(savedBuilding.x, savedBuilding.y, 0);
+                        if (!MapLayout.Bounds.Contains(position)) continue;
+                        var buildingObject = new GameObject(GameBalance.Name(savedBuilding.type));
+                        buildingObject.transform.position = position;
+                        var building = buildingObject.AddComponent<Building>();
+                        building.Initialize(this, savedBuilding.type, savedBuilding.level);
+                        buildings.Add(building);
+                    }
+                }
+
+                saveDirty = false;
+                autosaveTimer = 0;
+                return true;
+            }
+            catch (Exception exception)
+            {
+                Debug.LogWarning($"Could not load Shape Guard progress: {exception.Message}");
+                return false;
+            }
+        }
+
+        private void SaveProgress()
+        {
+            try
+            {
+                var data = new SaveData
+                {
+                    gold = Gold,
+                    ore = Ore,
+                    clearedWave = ClearedWave,
+                    gameSpeed = GameSpeed
+                };
+                foreach (var building in buildings)
+                {
+                    if (building == null) continue;
+                    data.buildings.Add(new BuildingSaveData
+                    {
+                        type = building.Type,
+                        level = building.Level,
+                        x = building.transform.position.x,
+                        y = building.transform.position.y
+                    });
+                }
+
+                File.WriteAllText(SavePath, JsonUtility.ToJson(data, true));
+                saveDirty = false;
+                autosaveTimer = 0;
+            }
+            catch (Exception exception)
+            {
+                autosaveTimer = 0;
+                Debug.LogWarning($"Could not save Shape Guard progress: {exception.Message}");
+            }
+        }
 
         public void ShowTracer(Vector3 start, Vector3 end)
         {

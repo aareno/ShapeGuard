@@ -16,6 +16,8 @@ Open `Assets/Scenes/SampleScene.unity` and press Play. Runtime bootstrap creates
 - Each scroll-wheel step changes zoom noticeably, with a range from close-up building views to a full-map overview.
 - Use the HUD speed button to cycle the game between 1x, 2x, and 3x speed.
 - Right-click to cancel building placement.
+- Progress is saved automatically. Gold, ore, cleared waves, game speed, placed buildings, and upgrades are restored the next time the game starts.
+- Loading an existing save immediately starts a farming wave. Only a brand-new game begins at Wave 1 without spawning enemies.
 
 ## Structure
 

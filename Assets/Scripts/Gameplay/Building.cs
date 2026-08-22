@@ -20,11 +20,12 @@ namespace ShapeGuard
         private SpriteRenderer rangeRing;
         private float timer;
 
-        public void Initialize(GameController owner, BuildingType type)
+        public void Initialize(GameController owner, BuildingType type, int level = 1)
         {
             game = owner;
             Type = type;
-            name = $"{GameBalance.Name(type)} L1";
+            Level = Mathf.Max(1, level);
+            name = $"{GameBalance.Name(type)} L{Level}";
             BuildVisual();
         }
 
