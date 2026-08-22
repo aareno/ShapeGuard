@@ -63,6 +63,7 @@ namespace ShapeGuard
 
             var text = game.ProgressionActive ? "PROGRESSION ACTIVE" : game.ProgressionQueued
                 ? $"WAVE {game.ClearedWave + 1} QUEUED" : $"START WAVE {game.ClearedWave + 1}";
+            if (GUI.Button(new Rect(Screen.width - 326, 23, 94, 46), $"SPEED {game.GameSpeed:0}x", button)) game.CycleGameSpeed();
             GUI.enabled = !game.ProgressionActive && !game.ProgressionQueued;
             if (GUI.Button(new Rect(Screen.width - 220, 23, 192, 46), text, button)) game.StartOrQueueProgression();
             GUI.enabled = true;

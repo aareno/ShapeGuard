@@ -16,6 +16,7 @@ namespace ShapeGuard
         public bool ProgressionActive { get; private set; }
         public bool ProgressionQueued { get; private set; }
         public bool IsTransitioning { get; private set; }
+        public float GameSpeed { get; private set; } = GameBalance.DefaultGameSpeed;
         public string Announcement { get; private set; }
         public bool ShowAnnouncement => announcementTimer > 0;
         public Building SelectedBuilding { get; private set; }
@@ -40,10 +41,22 @@ namespace ShapeGuard
         {
             Application.targetFrameRate = 60;
             QualitySettings.antiAliasing = 4;
+            Time.timeScale = GameSpeed;
             SetupCamera();
             CreateMap();
             gameObject.AddComponent<GameHud>();
             Announce("Build, then start Wave 1", 5f);
+        }
+
+        private void OnDestroy()
+        {
+            Time.timeScale = 1f;
+        }
+
+        public void CycleGameSpeed()
+        {
+            GameSpeed = GameSpeed < 1.5f ? 2f : GameSpeed < 2.5f ? 3f : 1f;
+            Time.timeScale = GameSpeed;
         }
 
         private void SetupCamera()
@@ -139,7 +152,10 @@ namespace ShapeGuard
             var scroll = mouse.scroll.ReadValue().y;
             if (Mathf.Abs(scroll) < .01f) return;
             var before = gameCamera.ScreenToWorldPoint(new Vector3(screen.x, screen.y, 10));
-            gameCamera.orthographicSize = Mathf.Clamp(gameCamera.orthographicSize - scroll * .006f, 4f, 19f);
+            gameCamera.orthographicSize = Mathf.Clamp(
+                gameCamera.orthographicSize - Mathf.Sign(scroll) * GameBalance.CameraZoomStep,
+                GameBalance.CameraMinimumZoom,
+                GameBalance.CameraMaximumZoom);
             var after = gameCamera.ScreenToWorldPoint(new Vector3(screen.x, screen.y, 10));
             gameCamera.transform.position += before - after;
             ClampCamera();

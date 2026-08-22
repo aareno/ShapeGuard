@@ -11,6 +11,10 @@ namespace ShapeGuard
         public const int DefenseCost = 60;
         public const int CollectorCost = 100;
         public const int CoreHealth = 10;
+        public const float DefaultGameSpeed = 1f;
+        public const float CameraZoomStep = 1.5f;
+        public const float CameraMinimumZoom = 3f;
+        public const float CameraMaximumZoom = 24f;
 
         public static int Cost(BuildingType type) => type == BuildingType.TriangleDefense ? DefenseCost : CollectorCost;
         public static string Currency(BuildingType type) => type == BuildingType.TriangleDefense ? "ore" : "gold";
