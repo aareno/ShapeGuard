@@ -19,6 +19,7 @@ namespace ShapeGuard
             public int ore;
             public int clearedWave;
             public float gameSpeed;
+            public List<int> unlockedPaths = new();
             public List<BuildingSaveData> buildings = new();
         }
 
@@ -36,7 +37,31 @@ namespace ShapeGuard
         public int ClearedWave { get; private set; }
         public int ActiveWave { get; private set; }
         public int CoreHealth { get; private set; } = GameBalance.CoreHealth;
-        public int UnlockedPaths => Mathf.Clamp(1 + ClearedWave / 10, 1, 10);
+        public int UnlockedPaths
+        {
+            get
+            {
+                var count = 0;
+                foreach (var unlocked in pathUnlocked) if (unlocked) count++;
+                return count;
+            }
+        }
+        public int PathUnlocksAvailable => Mathf.Clamp(
+            ClearedWave / 10 - (UnlockedPaths - 1), 0, pathUnlocked.Length - UnlockedPaths);
+        public int MaxCoreHealth => GameBalance.CoreHealth + (IsPathUnlocked(6) ? 5 : 0) +
+            (IsPathUnlocked(18) ? 5 : 0) + (IsPathUnlocked(19) ? 5 : 0) + (IsPathUnlocked(26) ? 10 : 0);
+        public float DefenseDamageMultiplier => 1f + (IsPathUnlocked(1) ? .2f : 0) +
+            (IsPathUnlocked(12) ? .15f : 0) + (IsPathUnlocked(22) ? .2f : 0);
+        public float OreAmountMultiplier => 1f + (IsPathUnlocked(2) ? .25f : 0) +
+            (IsPathUnlocked(16) ? .2f : 0) + (IsPathUnlocked(24) ? .25f : 0);
+        public float DefenseRangeMultiplier => 1f + (IsPathUnlocked(3) ? .2f : 0) + (IsPathUnlocked(13) ? .15f : 0);
+        public float DefenseFireIntervalMultiplier => (IsPathUnlocked(4) ? .85f : 1f) *
+            (IsPathUnlocked(14) ? .85f : 1f) * (IsPathUnlocked(23) ? .85f : 1f);
+        public float GoldRewardMultiplier => 1f + (IsPathUnlocked(5) ? .25f : 0) +
+            (IsPathUnlocked(15) ? .2f : 0) + (IsPathUnlocked(25) ? .25f : 0);
+        public float DefenseCostMultiplier => (IsPathUnlocked(7) ? .8f : 1f) * (IsPathUnlocked(20) ? .85f : 1f);
+        public float OreIntervalMultiplier => (IsPathUnlocked(8) ? .8f : 1f) * (IsPathUnlocked(17) ? .85f : 1f);
+        public float CollectorCostMultiplier => (IsPathUnlocked(10) ? .8f : 1f) * (IsPathUnlocked(21) ? .85f : 1f);
         public bool HasStarted { get; private set; }
         public bool ProgressionActive { get; private set; }
         public bool ProgressionQueued { get; private set; }
@@ -44,11 +69,14 @@ namespace ShapeGuard
         public float GameSpeed { get; private set; } = GameBalance.DefaultGameSpeed;
         public string Announcement { get; private set; }
         public bool ShowAnnouncement => announcementTimer > 0;
+        public int HoveredPath { get; private set; } = -1;
         public Building SelectedBuilding { get; private set; }
         public BuildingType? PlacementType { get; private set; }
 
         private readonly List<Vector3[]> paths = new();
         private readonly List<LineRenderer> pathLines = new();
+        private readonly List<SpriteRenderer> pathNodes = new();
+        private readonly bool[] pathUnlocked = new bool[GameBalance.PathNames.Length];
         private readonly List<Enemy> enemies = new();
         private readonly List<Building> buildings = new();
         private readonly List<(SpriteRenderer renderer, Color color)> previewParts = new();
@@ -62,6 +90,7 @@ namespace ShapeGuard
         private bool cameraDragging;
         private Vector2 lastDragPosition;
         private bool saveDirty;
+        private int secondWindCharges;
         private float autosaveTimer;
 
         private static string SavePath => Path.Combine(Application.persistentDataPath, "shape-guard-save.json");
@@ -70,6 +99,7 @@ namespace ShapeGuard
         {
             Application.targetFrameRate = 60;
             QualitySettings.antiAliasing = 4;
+            pathUnlocked[0] = true;
             Time.timeScale = GameSpeed;
             SetupCamera();
             CreateMap();
@@ -117,7 +147,7 @@ namespace ShapeGuard
             }
             gameCamera.orthographic = true;
             gameCamera.orthographicSize = 7.5f;
-            gameCamera.transform.position = new Vector3(0, 0, -10);
+            gameCamera.transform.position = new Vector3(MapLayout.CorePosition.x, MapLayout.CorePosition.y, -10);
             gameCamera.backgroundColor = GameBalance.Ground;
             gameCamera.clearFlags = CameraClearFlags.SolidColor;
         }
@@ -137,8 +167,9 @@ namespace ShapeGuard
             {
                 var pathObject = new GameObject($"Path {index + 1}{(index == 0 ? " - Open" : " - Future")}");
                 var line = pathObject.AddComponent<LineRenderer>();
-                line.positionCount = paths[index].Length;
-                line.SetPositions(paths[index]);
+                line.positionCount = 2;
+                line.SetPosition(0, paths[index][0]);
+                line.SetPosition(1, paths[index][1]);
                 line.startWidth = 1.15f;
                 line.endWidth = 1.15f;
                 line.numCornerVertices = 10;
@@ -146,6 +177,11 @@ namespace ShapeGuard
                 line.material = new Material(Shader.Find("Sprites/Default"));
                 line.sortingOrder = -2;
                 pathLines.Add(line);
+
+                var node = new GameObject($"Skill Node {index + 1}");
+                node.transform.position = paths[index][0];
+                pathNodes.Add(VisualFactory.Part(node.transform, GameBalance.PathNames[index], VisualFactory.Circle,
+                    GameBalance.PathLocked, Vector3.zero, Vector3.one * 1.55f, 1));
             }
             RefreshPathColors();
 
@@ -161,11 +197,14 @@ namespace ShapeGuard
         {
             for (var index = 0; index < pathLines.Count; index++)
             {
-                var color = index < UnlockedPaths ? GameBalance.PathOpen : GameBalance.PathLocked;
+                var unlocked = IsPathUnlocked(index);
+                var available = CanUnlockPath(index);
+                var color = unlocked ? GameBalance.PathOpen : available ? GameBalance.Gold : GameBalance.PathLocked;
                 pathLines[index].startColor = color;
                 pathLines[index].endColor = color;
-                pathLines[index].sortingOrder = index < UnlockedPaths ? -1 : -2;
-                pathLines[index].gameObject.name = $"Path {index + 1} - {(index < UnlockedPaths ? "Open" : $"Unlock Wave {index * 10}")}";
+                pathLines[index].sortingOrder = unlocked ? -1 : -2;
+                pathLines[index].gameObject.name = $"Path {index + 1} - {(unlocked ? GameBalance.PathNames[index] : available ? "Choice Available" : "Locked")}";
+                pathNodes[index].color = color;
             }
         }
 
@@ -174,6 +213,7 @@ namespace ShapeGuard
             announcementTimer -= Time.deltaTime;
             autosaveTimer += Time.unscaledDeltaTime;
             if (saveDirty && autosaveTimer >= AutosaveInterval) SaveProgress();
+            UpdateHoveredPath();
             HandleCamera();
             HandleWave();
             HandlePointer();
@@ -184,7 +224,7 @@ namespace ShapeGuard
             var mouse = Mouse.current;
             if (mouse == null) return;
             var screen = mouse.position.ReadValue();
-            if (mouse.leftButton.wasPressedThisFrame && !PlacementType.HasValue && !PointerOverHud(screen))
+            if (mouse.leftButton.wasPressedThisFrame && !PlacementType.HasValue && HoveredPath < 0 && !PointerOverHud(screen))
             {
                 cameraDragging = true;
                 lastDragPosition = screen;
@@ -257,7 +297,8 @@ namespace ShapeGuard
             ProgressionActive = progression;
             ProgressionQueued = false;
             ActiveWave = progression ? ClearedWave + 1 : Mathf.Max(1, ClearedWave);
-            CoreHealth = GameBalance.CoreHealth;
+            CoreHealth = MaxCoreHealth;
+            secondWindCharges = (IsPathUnlocked(11) ? 1 : 0) + (IsPathUnlocked(27) ? 1 : 0);
             spawnRemaining = 7 + ActiveWave * 2;
             spawnedCount = 0;
             spawnTimer = .35f;
@@ -266,7 +307,17 @@ namespace ShapeGuard
 
         private void SpawnEnemy()
         {
-            var pathIndex = spawnedCount % UnlockedPaths;
+            var unlockedNumber = spawnedCount % UnlockedPaths;
+            var pathIndex = 0;
+            for (var index = 0; index < pathUnlocked.Length; index++)
+            {
+                if (!pathUnlocked[index]) continue;
+                if (unlockedNumber-- == 0)
+                {
+                    pathIndex = index;
+                    break;
+                }
+            }
             var enemyObject = new GameObject($"Red Circle - Path {pathIndex + 1}");
             var enemy = enemyObject.AddComponent<Enemy>();
             enemies.Add(enemy);
@@ -277,13 +328,13 @@ namespace ShapeGuard
         {
             if (ProgressionActive)
             {
-                var oldPathCount = UnlockedPaths;
+                var oldUnlockCount = PathUnlocksAvailable;
                 ClearedWave = ActiveWave;
                 ProgressionQueued = true;
-                if (UnlockedPaths > oldPathCount)
+                if (PathUnlocksAvailable > oldUnlockCount)
                 {
                     RefreshPathColors();
-                    Announce($"PATH {UnlockedPaths} OPENED - WAVE {ActiveWave + 1} NEXT", 2.8f);
+                    Announce("NEW PATH UNLOCK - CHOOSE A SKILL", 2.8f);
                 }
                 else Announce($"WAVE {ActiveWave} CLEARED - WAVE {ActiveWave + 1} NEXT", 2.3f);
             }
@@ -337,6 +388,11 @@ namespace ShapeGuard
             }
 
             if (!mouse.leftButton.wasPressedThisFrame || PointerOverHud(screen)) return;
+            if (HoveredPath > 0 && !IsPathUnlocked(HoveredPath))
+            {
+                UnlockPath(HoveredPath);
+                return;
+            }
             SelectedBuilding = null;
             var closest = .8f;
             foreach (var building in buildings)
@@ -351,8 +407,31 @@ namespace ShapeGuard
         private bool PointerOverHud(Vector2 screen)
         {
             if (screen.y < 135 || screen.y > Screen.height - 90) return true;
+            var guiPoint = new Vector2(screen.x, Screen.height - screen.y);
             if (SelectedBuilding == null) return false;
-            return SelectionPanelRect().Contains(new Vector2(screen.x, Screen.height - screen.y));
+            return SelectionPanelRect().Contains(guiPoint);
+        }
+
+        private void UpdateHoveredPath()
+        {
+            HoveredPath = -1;
+            var mouse = Mouse.current;
+            if (mouse == null || PlacementType.HasValue) return;
+            var screen = mouse.position.ReadValue();
+            if (PointerOverHud(screen)) return;
+            var world = gameCamera.ScreenToWorldPoint(new Vector3(screen.x, screen.y, 10));
+            var unitsPerPixel = gameCamera.orthographicSize * 2f / Mathf.Max(1, Screen.height);
+            var hoverRadius = Mathf.Max(.8f, unitsPerPixel * 10f);
+            var closest = hoverRadius;
+            for (var index = 0; index < paths.Count; index++)
+            {
+                var distance = Mathf.Min(
+                    Vector2.Distance(world, paths[index][0]),
+                    DistanceToSegment(world, paths[index][0], paths[index][1]));
+                if (distance >= closest) continue;
+                closest = distance;
+                HoveredPath = index;
+            }
         }
 
         public Rect SelectionPanelRect()
@@ -398,7 +477,7 @@ namespace ShapeGuard
         private void Place(Vector3 point)
         {
             var type = PlacementType.Value;
-            if (!TrySpend(GameBalance.Currency(type), GameBalance.Cost(type)))
+            if (!TrySpend(GameBalance.Currency(type), GetBuildCost(type)))
             {
                 Announce($"NOT ENOUGH {GameBalance.Currency(type).ToUpperInvariant()}", 1.5f);
                 return;
@@ -448,6 +527,40 @@ namespace ShapeGuard
             return true;
         }
 
+        public int GetBuildCost(BuildingType type)
+        {
+            var multiplier = type == BuildingType.TriangleDefense ? DefenseCostMultiplier : CollectorCostMultiplier;
+            return Mathf.Max(1, Mathf.RoundToInt(GameBalance.Cost(type) * multiplier));
+        }
+
+        public bool IsPathUnlocked(int index) => index >= 0 && index < pathUnlocked.Length && pathUnlocked[index];
+
+        public bool CanUnlockPath(int index)
+        {
+            if (index <= 0 || index >= pathUnlocked.Length || pathUnlocked[index] || PathUnlocksAvailable <= 0) return false;
+            var parent = MapLayout.PathParents[index];
+            return parent < 0 || IsPathUnlocked(parent);
+        }
+
+        public void UnlockPath(int index)
+        {
+            if (!CanUnlockPath(index))
+            {
+                if (index > 0 && index < pathUnlocked.Length)
+                    Announce(PathUnlocksAvailable <= 0 ? "CLEAR 10 MORE WAVES FOR AN UNLOCK" : "UNLOCK ITS PARENT PATH FIRST", 1.8f);
+                return;
+            }
+
+            var oldMaxHealth = MaxCoreHealth;
+            pathUnlocked[index] = true;
+            CoreHealth += MaxCoreHealth - oldMaxHealth;
+            if (index == 11 || index == 27) secondWindCharges++;
+            RefreshPathColors();
+            Announce($"{GameBalance.PathNames[index].ToUpperInvariant()} - {GameBalance.PathBonuses[index]}", 3f);
+            saveDirty = true;
+            SaveProgress();
+        }
+
         public void UpgradeSelected()
         {
             if (SelectedBuilding == null) return;
@@ -478,14 +591,21 @@ namespace ShapeGuard
         public void EnemyKilled(Enemy enemy, int reward)
         {
             enemies.Remove(enemy);
-            Gold += reward;
+            Gold += Mathf.RoundToInt(reward * GoldRewardMultiplier);
             saveDirty = true;
         }
 
         public void EnemyReachedCore(Enemy enemy, int damage)
         {
             enemies.Remove(enemy);
-            CoreHealth = Mathf.Max(0, CoreHealth - damage);
+            var reducedDamage = Mathf.Max(1, damage - (IsPathUnlocked(9) ? 1 : 0));
+            CoreHealth = Mathf.Max(0, CoreHealth - reducedDamage);
+            if (CoreHealth <= 0 && secondWindCharges > 0)
+            {
+                secondWindCharges--;
+                CoreHealth = 1;
+                Announce("SECOND WIND - CORE SAVED", 2f);
+            }
             if (CoreHealth <= 0) FailWave();
         }
 
@@ -509,6 +629,20 @@ namespace ShapeGuard
                 ClearedWave = Mathf.Max(0, data.clearedWave);
                 GameSpeed = data.gameSpeed >= 2.5f ? 3f : data.gameSpeed >= 1.5f ? 2f : 1f;
                 Time.timeScale = GameSpeed;
+
+                Array.Clear(pathUnlocked, 0, pathUnlocked.Length);
+                if (data.unlockedPaths != null && data.unlockedPaths.Count > 0)
+                {
+                    foreach (var pathIndex in data.unlockedPaths)
+                        if (pathIndex >= 0 && pathIndex < pathUnlocked.Length) pathUnlocked[pathIndex] = true;
+                }
+                else
+                {
+                    // Saves made before player-selected paths preserve their previously earned path count.
+                    var legacyPathCount = Mathf.Clamp(1 + ClearedWave / 10, 1, pathUnlocked.Length);
+                    for (var index = 0; index < legacyPathCount; index++) pathUnlocked[index] = true;
+                }
+                pathUnlocked[0] = true;
                 RefreshPathColors();
 
                 if (data.buildings != null)
@@ -548,6 +682,8 @@ namespace ShapeGuard
                     clearedWave = ClearedWave,
                     gameSpeed = GameSpeed
                 };
+                for (var index = 0; index < pathUnlocked.Length; index++)
+                    if (pathUnlocked[index]) data.unlockedPaths.Add(index);
                 foreach (var building in buildings)
                 {
                     if (building == null) continue;

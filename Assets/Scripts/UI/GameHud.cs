@@ -45,6 +45,7 @@ namespace ShapeGuard
             DrawTopBar();
             DrawBuildBar();
             DrawSelection();
+            DrawPathTooltip();
             if (!game.ShowAnnouncement) return;
             var rect = new Rect(Screen.width * .5f - 260, 100, 520, 54);
             GUI.Box(rect, GUIContent.none, panel);
@@ -57,9 +58,9 @@ namespace ShapeGuard
             GUI.Label(new Rect(28, 25, 170, 38), "SHAPE GUARD", title);
             GUI.Label(new Rect(205, 25, 120, 38), $"GOLD  {game.Gold}", label);
             GUI.Label(new Rect(325, 25, 110, 38), $"ORE  {game.Ore}", label);
-            GUI.Label(new Rect(435, 25, 115, 38), $"CORE  {game.CoreHealth}/{GameBalance.CoreHealth}", label);
+            GUI.Label(new Rect(435, 25, 115, 38), $"CORE  {game.CoreHealth}/{game.MaxCoreHealth}", label);
             GUI.Label(new Rect(550, 25, 110, 38), game.HasStarted ? $"WAVE  {game.ActiveWave}" : "WAVE  READY", label);
-            GUI.Label(new Rect(660, 25, 130, 38), $"PATHS  {game.UnlockedPaths}/10", label);
+            GUI.Label(new Rect(660, 25, 170, 38), $"PATHS {game.UnlockedPaths}/{GameBalance.PathNames.Length}  +{game.PathUnlocksAvailable}", label);
 
             var text = game.ProgressionActive ? "PROGRESSION ACTIVE" : game.ProgressionQueued
                 ? $"WAVE {game.ClearedWave + 1} QUEUED" : $"START WAVE {game.ClearedWave + 1}";
@@ -84,7 +85,7 @@ namespace ShapeGuard
         private void DrawBuildButton(Rect rect, BuildingType type, string detail)
         {
             var placing = game.PlacementType == type ? "  [PLACING]" : "";
-            var text = $"{GameBalance.Name(type)} - {GameBalance.Cost(type)} {GameBalance.Currency(type)}{placing}\n{detail}";
+            var text = $"{GameBalance.Name(type)} - {game.GetBuildCost(type)} {GameBalance.Currency(type)}{placing}\n{detail}";
             if (!GUI.Button(rect, text, button)) return;
             if (game.PlacementType == type) game.CancelPlacement();
             else game.BeginPlacement(type);
@@ -104,6 +105,36 @@ namespace ShapeGuard
             else GUI.Label(new Rect(rect.x + 12, rect.y + 40, 256, 20), $"Ore generation  {selected.OrePerSecond:0.00}/sec", label);
             GUI.Label(new Rect(rect.x + 12, rect.y + 62, 256, 20), $"Upgrade: {selected.UpgradeCost} {selected.UpgradeCurrency}", label);
             if (GUI.Button(new Rect(rect.x + 12, rect.y + 88, 256, 32), "UPGRADE", button)) game.UpgradeSelected();
+        }
+
+        private void DrawPathTooltip()
+        {
+            var index = game.HoveredPath;
+            if (index < 0) return;
+            var mouse = Event.current.mousePosition;
+            const float width = 310;
+            const float height = 92;
+            var x = Mathf.Clamp(mouse.x + 18, 12, Screen.width - width - 12);
+            var y = Mathf.Clamp(mouse.y + 18, 88, Screen.height - height - 112);
+            var rect = new Rect(x, y, width, height);
+            GUI.Box(rect, GUIContent.none, panel);
+            GUI.Label(new Rect(x + 12, y + 7, width - 24, 27), GameBalance.PathNames[index], title);
+            GUI.Label(new Rect(x + 12, y + 34, width - 24, 22), GameBalance.PathBonuses[index], label);
+
+            string status;
+            if (game.IsPathUnlocked(index)) status = "UNLOCKED";
+            else if (game.CanUnlockPath(index)) status = "YELLOW - CLICK TO UNLOCK";
+            else if (game.PathUnlocksAvailable <= 0)
+            {
+                var waves = 10 - game.ClearedWave % 10;
+                status = $"LOCKED - NEXT PATH UNLOCK IN {waves} WAVES";
+            }
+            else
+            {
+                var parent = MapLayout.PathParents[index];
+                status = parent >= 0 ? $"LOCKED - REQUIRES {GameBalance.PathNames[parent]}" : "LOCKED";
+            }
+            GUI.Label(new Rect(x + 12, y + 61, width - 24, 22), status, label);
         }
     }
 }

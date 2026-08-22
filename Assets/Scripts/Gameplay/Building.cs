@@ -6,15 +6,23 @@ namespace ShapeGuard
     {
         public BuildingType Type { get; private set; }
         public int Level { get; private set; } = 1;
-        public int UpgradeCost => Type == BuildingType.TriangleDefense ? Level * 35 : Level * 80;
+        public int UpgradeCost
+        {
+            get
+            {
+                var baseCost = Type == BuildingType.TriangleDefense ? Level * 35 : Level * 80;
+                var multiplier = Type == BuildingType.TriangleDefense && game != null ? game.DefenseCostMultiplier : 1f;
+                return Mathf.Max(1, Mathf.RoundToInt(baseCost * multiplier));
+            }
+        }
         public string UpgradeCurrency => Type == BuildingType.TriangleDefense ? "ore" : "gold";
-        public float Range => 3.8f + (Level - 1) * .35f;
-        public float Damage => 14f + Level * 6f;
-        public float FireInterval => Mathf.Max(.28f, .9f - Level * .07f);
+        public float Range => (3.8f + (Level - 1) * .35f) * (game != null ? game.DefenseRangeMultiplier : 1f);
+        public float Damage => (14f + Level * 6f) * (game != null ? game.DefenseDamageMultiplier : 1f);
+        public float FireInterval => Mathf.Max(.28f, (.9f - Level * .07f) * (game != null ? game.DefenseFireIntervalMultiplier : 1f));
         public float Dps => Damage / FireInterval;
         public float OrePerSecond => OreAmount / OreInterval;
-        public int OreAmount => 3 + Level * 2;
-        public float OreInterval => Mathf.Max(2.5f, 5.5f - Level * .35f);
+        public int OreAmount => Mathf.RoundToInt((3 + Level * 2) * (game != null ? game.OreAmountMultiplier : 1f));
+        public float OreInterval => Mathf.Max(2f, (5.5f - Level * .35f) * (game != null ? game.OreIntervalMultiplier : 1f));
 
         private GameController game;
         private SpriteRenderer rangeRing;
@@ -54,7 +62,11 @@ namespace ShapeGuard
         private void Update()
         {
             if (game == null) return;
-            if (rangeRing != null) rangeRing.enabled = game.SelectedBuilding == this;
+            if (rangeRing != null)
+            {
+                rangeRing.enabled = game.SelectedBuilding == this;
+                rangeRing.transform.localScale = Vector3.one * (Range * 2f / .95f);
+            }
             if (game.IsTransitioning) return;
             timer -= Time.deltaTime;
             if (Type == BuildingType.TriangleDefense) Attack();
