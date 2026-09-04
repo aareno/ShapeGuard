@@ -54,4 +54,4 @@ Runtime bootstrap creates the game automatically.
 
 ## License
 
-No license has been selected yet. The source is publicly viewable, but no permission to copy, modify, or redistribute it is granted. Add a license before accepting outside contributions or allowing reuse.
+This project is licensed under the [MIT License](LICENSE).
