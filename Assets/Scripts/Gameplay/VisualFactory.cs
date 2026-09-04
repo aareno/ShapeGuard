@@ -9,10 +9,32 @@ namespace ShapeGuard
         private static Sprite square;
         private static Sprite ring;
         private static readonly Dictionary<int, Sprite> polygons = new();
+        private static readonly Dictionary<int, Sprite> polygonOutlines = new();
 
         public static Sprite Circle => circle != null ? circle : circle = MakeCircle();
         public static Sprite Square => square != null ? square : square = MakeSquare();
         public static Sprite Ring => ring != null ? ring : ring = MakeRing();
+
+        public static Sprite PolygonOutline(int sides)
+        {
+            sides = Mathf.Max(3, sides);
+            if (polygonOutlines.TryGetValue(sides, out var cached)) return cached;
+            const int size = 128;
+            var texture = NewTexture(size, $"Polygon Outline {sides}");
+            var pixels = new Color[size * size];
+            for (var y = 0; y < size; y++)
+            for (var x = 0; x < size; x++)
+            {
+                var px = (x + .5f) / size * 2f - 1f;
+                var py = (y + .5f) / size * 2f - 1f;
+                var outer = InsidePolygon(px, py, sides, .92f);
+                var inner = InsidePolygon(px, py, sides, .69f);
+                pixels[y * size + x] = new Color(1, 1, 1, outer && !inner ? 1f : 0f);
+            }
+            texture.SetPixels(pixels);
+            texture.Apply();
+            return polygonOutlines[sides] = MakeSprite(texture);
+        }
 
         public static Sprite Polygon(int sides)
         {
@@ -52,6 +74,14 @@ namespace ShapeGuard
             renderer.color = color;
             renderer.sortingOrder = order;
             return renderer;
+        }
+
+        public static SpriteRenderer GlowPart(Transform parent, string name, Sprite sprite, Color color,
+            Vector3 localPosition, Vector3 scale, int order, float glowScale = 1.35f)
+        {
+            var glow = new Color(color.r, color.g, color.b, color.a * .16f);
+            Part(parent, $"{name} Glow", sprite, glow, localPosition, scale * glowScale, order - 1);
+            return Part(parent, name, sprite, color, localPosition, scale, order);
         }
 
         private static bool InsidePolygon(float x, float y, int sides, float radius)
@@ -111,7 +141,7 @@ namespace ShapeGuard
         private static Texture2D NewTexture(int size, string name) => new(size, size, TextureFormat.RGBA32, false)
         {
             name = name,
-            filterMode = FilterMode.Bilinear,
+            filterMode = FilterMode.Point,
             wrapMode = TextureWrapMode.Clamp
         };
 

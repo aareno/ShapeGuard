@@ -5,8 +5,14 @@ namespace ShapeGuard
 {
     public static class MapLayout
     {
+        private const int BaseNodeCount = 28;
+        private const float MapRadius = 188f;
         public static readonly Vector3 CorePosition = Vector3.zero;
-        public static readonly Rect Bounds = Rect.MinMaxRect(-135f, -135f, 135f, 135f);
+        public static readonly Rect Bounds = Rect.MinMaxRect(-200f, -200f, 200f, 200f);
+        public static readonly float[] TierFractions = { .12f, .27f, .49f, .73f, .97f };
+
+        // Binary angle splits distribute the final leaves evenly around the whole map.
+        private static readonly float[] TierSplitAngles = { 0f, 22.5f, 11.25f, 5.625f, 2.8125f };
 
         private static readonly int[] BasePathParents =
         {
@@ -15,29 +21,19 @@ namespace ShapeGuard
             4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11
         };
 
-        private static readonly Vector3[] BasePathNodes =
-        {
-            // Four primary branches: north, east, south, and west.
-            new(0, 16, 0), new(16, 0, 0), new(0, -16, 0), new(-16, 0, 0),
-
-            // Each primary branch splits into two outer branches.
-            new(-14, 34, 0), new(14, 34, 0), new(34, 14, 0), new(34, -14, 0),
-            new(14, -34, 0), new(-14, -34, 0), new(-34, -14, 0), new(-34, 14, 0),
-
-            // Each outer branch currently ends in two leaves.
-            new(-40, 60, 0), new(-14, 71, 0), new(14, 71, 0), new(40, 60, 0),
-            new(60, 40, 0), new(71, 14, 0), new(71, -14, 0), new(60, -40, 0),
-            new(40, -60, 0), new(14, -71, 0), new(-14, -71, 0), new(-40, -60, 0),
-            new(-60, -40, 0), new(-71, -14, 0), new(-71, 14, 0), new(-60, 40, 0)
-        };
-
         public static readonly int[] PathParents = CreatePathParents();
         private static readonly Vector3[] PathNodes = CreatePathNodes();
 
         private static int[] CreatePathParents()
         {
             var parents = new List<int>(BasePathParents);
-            for (var parent = 12; parent < BasePathNodes.Length; parent++)
+            for (var parent = 12; parent < BaseNodeCount; parent++)
+            {
+                parents.Add(parent);
+                parents.Add(parent);
+            }
+            var endBranchCount = parents.Count;
+            for (var parent = BaseNodeCount; parent < endBranchCount; parent++)
             {
                 parents.Add(parent);
                 parents.Add(parent);
@@ -47,21 +43,32 @@ namespace ShapeGuard
 
         private static Vector3[] CreatePathNodes()
         {
-            var nodes = new List<Vector3>(BasePathNodes);
-            const float leafRadius = 120f;
-            const float splitAngle = 2.8f * Mathf.Deg2Rad;
-            for (var parent = 12; parent < BasePathNodes.Length; parent++)
+            var nodes = new Vector3[PathParents.Length];
+            var angles = new float[PathParents.Length];
+            var depths = new int[PathParents.Length];
+            var rootAngles = new[] { 90f, 0f, -90f, 180f };
+            for (var index = 0; index < rootAngles.Length; index++)
             {
-                var parentNode = BasePathNodes[parent];
-                var angle = Mathf.Atan2(parentNode.y, parentNode.x);
-                nodes.Add(Polar(leafRadius, angle - splitAngle));
-                nodes.Add(Polar(leafRadius, angle + splitAngle));
+                angles[index] = rootAngles[index];
+                nodes[index] = PointOnTier(TierFractions[0], angles[index] * Mathf.Deg2Rad);
             }
-            return nodes.ToArray();
+
+            for (var index = rootAngles.Length; index < nodes.Length; index++)
+            {
+                var parent = PathParents[index];
+                var depth = depths[parent] + 1;
+                depths[index] = depth;
+                angles[index] = angles[parent] + TierSplitAngles[depth] * (index % 2 == 0 ? 1f : -1f);
+                nodes[index] = PointOnTier(TierFractions[depth], angles[index] * Mathf.Deg2Rad);
+            }
+            return nodes;
         }
 
-        private static Vector3 Polar(float radius, float angle) =>
-            new(Mathf.Cos(angle) * radius, Mathf.Sin(angle) * radius, 0);
+        public static Vector3 PointOnTier(float fraction, float angle)
+        {
+            var radius = MapRadius * fraction;
+            return new Vector3(Mathf.Cos(angle) * radius, Mathf.Sin(angle) * radius, 0);
+        }
 
         public static IReadOnlyList<Vector3[]> CreatePaths()
         {
